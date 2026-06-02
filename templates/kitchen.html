@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Kitchen — Mini Cafe{% endblock %}
+
+{% block content %}
+<div class="animate-fade-up">
+  <div class="section-header">
+    <div>
+      <h1 class="section-title" style="font-size:1.4rem;">👨‍🍳 Kitchen Dashboard</h1>
+      <p style="font-size:0.82rem;color:var(--text-3);margin-top:0.15rem;">Manage incoming orders in real-time.</p>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center;">
+      <span class="live-chip"><span class="live-dot"></span> Live</span>
+      <button class="btn btn-secondary btn-sm" onclick="loadOrders()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stat-grid stagger" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.5rem;">
+    <div class="stat-card">
+      <div class="stat-icon">🕐</div>
+      <div class="stat-label">New Orders</div>
+      <div class="stat-value amber" id="k-stat-new">0</div>
+    </div>
+    <div class="stat-card teal-accent">
+      <div class="stat-icon">🔥</div>
+      <div class="stat-label">In Progress</div>
+      <div class="stat-value teal" id="k-stat-progress">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">✅</div>
+      <div class="stat-label">Completed Today</div>
+      <div class="stat-value success" id="k-stat-done">—</div>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="setFilter('all',this)">All Active</button>
+    <button class="filter-btn" onclick="setFilter('placed',this)">🕐 New</button>
+    <button class="filter-btn" onclick="setFilter('accepted',this)">✔️ Accepted</button>
+    <button class="filter-btn" onclick="setFilter('preparing',this)">🔥 Preparing</button>
+  </div>
+
+  <div class="order-cards-grid" id="orders-grid">
+    <div class="skeleton skeleton-card" style="grid-column:1/-1"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/kitchen.js"></script>
+{% endblock %}

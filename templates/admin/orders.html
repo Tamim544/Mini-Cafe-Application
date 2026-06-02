@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Orders — Mini Cafe Admin{% endblock %}
+
+{% block content %}
+<div class="animate-fade-up">
+  <div class="section-header">
+    <div>
+      <h1 class="section-title" style="font-size:1.4rem;">📋 Order Management</h1>
+      <p style="font-size:0.82rem;color:var(--text-3);margin-top:0.15rem;">View, filter, and manage all orders.</p>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="loadOrders()">↻ Refresh</button>
+  </div>
+
+  <div class="filter-bar" style="margin-bottom:1rem;">
+    <button class="filter-btn active" id="f-all"       onclick="setFilter('',this)">All</button>
+    <button class="filter-btn" id="f-placed"   onclick="setFilter('placed',this)">🕐 New</button>
+    <button class="filter-btn" id="f-accepted" onclick="setFilter('accepted',this)">✔️ Accepted</button>
+    <button class="filter-btn" id="f-preparing"onclick="setFilter('preparing',this)">🔥 Preparing</button>
+    <button class="filter-btn" id="f-ready"    onclick="setFilter('ready',this)">🛎️ Ready</button>
+    <button class="filter-btn" id="f-delivered"onclick="setFilter('delivered',this)">✅ Delivered</button>
+    <button class="filter-btn" id="f-cancelled"onclick="setFilter('cancelled',this)">✖ Cancelled</button>
+  </div>
+
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>Ref</th><th>Customer</th><th>Table</th><th>Items</th><th>Total</th><th>Status</th><th>Placed</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="orders-table">
+        <tr><td colspan="8" style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto;"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Order detail modal -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <span class="modal-title" id="detail-title">Order</span>
+      <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
+    </div>
+    <div id="detail-body"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireRole('admin');
+
+let currentStatus = '';
+
+function setFilter(s, btn) {
+  currentStatus = s;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadOrders();
+}
+window.setFilter = setFilter;
+
+async function loadOrders() {
+  try {
+    const url = currentStatus ? `/api/orders?status=${currentStatus}` : '/api/orders';
+    const res = await api(url);
+    if (!res.ok) return;
+    const orders = await res.json();
+    renderTable(orders);
+  } catch { showToast('Failed to load orders','error'); }
+}
+
+function renderTable(orders) {
+  const tbody = document.getElementById('orders-table');
+  if (!orders.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:2.5rem;color:var(--text-3);font-size:0.875rem;">No orders found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = orders.map(o => `
+    <tr>
+      <td><a href="/track/${o.order_ref}" target="_blank" style="color:var(--amber);font-weight:800;text-decoration:none;font-family:'Outfit',sans-serif;letter-spacing:0.02em;">${o.order_ref}</a></td>
+      <td style="color:var(--text-1);font-weight:600;">${o.customer_name}</td>
+      <td>${o.table_number || '<span style="color:var(--text-3)">—</span>'}</td>
+      <td style="color:var(--text-3);font-size:0.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${o.items.map(i=>`${i.item_name}×${i.quantity}`).join(', ')}</td>
+      <td style="font-weight:800;color:var(--amber);font-family:'Outfit',sans-serif;">$${o.total.toFixed(2)}</td>
+      <td>${statusBadge(o.status)}</td>
+      <td style="font-size:0.75rem;color:var(--text-3);">${timeAgo(o.placed_at)}</td>
+      <td>
+        <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+          ${adminActions(o)}
+          <button class="btn btn-secondary btn-sm" onclick="viewDetail('${o.order_ref}')">View</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function adminActions(o) {
+  const flow = { placed:['accepted','cancelled'], accepted:['preparing','cancelled'], preparing:['ready','cancelled'], ready:['delivered','cancelled'] };
+  const styles = { accepted:'btn-success',preparing:'btn-teal',ready:'btn-primary',delivered:'btn-success',cancelled:'btn-danger' };
+  return (flow[o.status] || []).map(s =>
+    `<button class="btn ${styles[s]||'btn-secondary'} btn-sm" onclick="changeStatus('${o.order_ref}','${s}')">${s}</button>`
+  ).join('');
+}
+
+async function changeStatus(ref, status) {
+  const res = await api(`/api/orders/${ref}/status`, { method:'PATCH', body:JSON.stringify({status}) });
+  if (res.ok) { showToast(`${ref} → ${status}`, 'success'); loadOrders(); }
+  else { const d=await res.json(); showToast(d.error||'Failed','error'); }
+}
+window.changeStatus = changeStatus;
+
+async function viewDetail(ref) {
+  const res = await api(`/api/orders/${ref}`);
+  if (!res.ok) return;
+  const o = await res.json();
+  document.getElementById('detail-title').textContent = `Order ${o.order_ref}`;
+  document.getElementById('detail-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+      <div>
+        <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:0.2rem;">Customer</div>
+        <div style="font-weight:700;font-size:0.95rem;">${o.customer_name}</div>
+        <div style="font-size:0.78rem;color:var(--text-3);margin-top:0.15rem;">${o.table_number ? 'Table '+o.table_number : 'Takeaway'}</div>
+      </div>
+      <div>
+        <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:0.2rem;">Status</div>
+        ${statusBadge(o.status)}
+        <div style="font-size:0.72rem;color:var(--text-3);margin-top:0.3rem;">${new Date(o.placed_at).toLocaleString()}</div>
+      </div>
+    </div>
+    ${o.notes ? `<div style="padding:0.6rem 0.85rem;background:rgba(255,255,255,0.025);border:1px solid var(--glass-border);border-radius:var(--radius-sm);font-size:0.82rem;color:var(--text-2);margin-bottom:1rem;">📝 ${o.notes}</div>` : ''}
+    <div style="border-top:1px solid var(--glass-border);padding-top:1rem;">
+      ${o.items.map(i=>`<div style="display:flex;justify-content:space-between;padding:0.32rem 0;font-size:0.875rem;border-bottom:1px solid rgba(255,255,255,0.03);">
+        <span style="color:var(--text-2)">${i.item_name} <span style="color:var(--text-3);font-weight:600;">×${i.quantity}</span></span>
+        <strong style="color:var(--text-1);">$${i.subtotal.toFixed(2)}</strong></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding-top:0.85rem;margin-top:0.25rem;border-top:1px solid var(--glass-border);font-weight:800;font-size:1.1rem;">
+        <span>Total</span><span style="color:var(--amber);font-family:'Outfit',sans-serif;">$${o.total.toFixed(2)}</span>
+      </div>
+    </div>
+    ${o.qr_code_path ? `<div style="margin-top:1rem;text-align:center;"><img src="${o.qr_code_path}" style="width:110px;border-radius:var(--radius-sm);border:1px solid var(--glass-border);box-shadow:0 4px 16px rgba(0,0,0,0.3);" /></div>` : ''}
+    <div style="margin-top:1.25rem;display:flex;gap:0.5rem;justify-content:center;">
+      <a href="/api/orders/${o.order_ref}/receipt" class="btn btn-secondary btn-sm" target="_blank" rel="noopener">📄 Receipt</a>
+      <a href="/track/${o.order_ref}" class="btn btn-secondary btn-sm" target="_blank" rel="noopener">📍 Track</a>
+    </div>`;
+  openModal('detail-modal');
+}
+window.viewDetail = viewDetail;
+
+const socket = getSocket();
+socket.on('new_order', () => loadOrders());
+socket.on('order_status_update', () => loadOrders());
+
+document.addEventListener('DOMContentLoaded', loadOrders);
+</script>
+{% endblock %}

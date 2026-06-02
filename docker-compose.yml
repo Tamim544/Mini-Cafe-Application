@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persist the SQLite database and generated QR codes
+      - cafe_data:/app/instance
+      - cafe_qrcodes:/app/static/qrcodes
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-change-this-secret}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-this-jwt-secret}
+      - DATABASE_URL=sqlite:////app/instance/cafe.db
+    restart: unless-stopped
+
+volumes:
+  cafe_data:
+  cafe_qrcodes:

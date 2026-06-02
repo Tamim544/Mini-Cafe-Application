@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Order {{ order_ref }} — Mini Cafe{% endblock %}
+
+{% block content %}
+<div style="max-width:620px;margin:0 auto;" class="animate-fade-up">
+  <!-- Header -->
+  <div style="text-align:center;margin-bottom:2rem;">
+    <div style="font-size:3.5rem;margin-bottom:0.5rem;filter:drop-shadow(0 8px 20px rgba(245,158,11,0.3));">☕</div>
+    <h1 style="margin-bottom:0.3rem;">
+      Order <span class="gradient-text">Tracking</span>
+    </h1>
+    <p style="font-size:0.875rem;color:var(--text-3);">Real-time status — updates automatically via WebSocket.</p>
+    <div style="margin-top:1rem;display:inline-flex;align-items:center;gap:0.5rem;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.18);border-radius:99px;padding:0.42rem 1.35rem;">
+      <span style="font-size:0.68rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em;">Order ID</span>
+      <span style="font-family:'Outfit',sans-serif;font-weight:900;color:var(--amber);font-size:1.15rem;letter-spacing:0.1em;">{{ order_ref }}</span>
+    </div>
+    <div style="margin-top:0.6rem;">
+      <span class="live-chip"><span class="live-dot"></span> Live</span>
+    </div>
+  </div>
+
+  <!-- Progress Track -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:1.25rem;">Order Progress</div>
+    <div class="progress-track" id="progress-track">
+      <div class="progress-line"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      {% for step in [('placed','🕐','Placed'), ('accepted','✔️','Accepted'), ('preparing','🔥','Preparing'), ('ready','🛎️','Ready'), ('delivered','✅','Delivered')] %}
+      <div class="progress-step" id="step-{{ step[0] }}">
+        <div class="step-dot" id="dot-{{ step[0] }}">{{ step[1] }}</div>
+        <div class="step-label" id="lbl-{{ step[0] }}">{{ step[2] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Current Status Callout -->
+  <div id="status-callout" class="card" style="margin-bottom:1.25rem;text-align:center;display:none;">
+    <div id="callout-emoji" style="font-size:2rem;margin-bottom:0.3rem;"></div>
+    <div id="callout-text" style="font-weight:700;font-size:1rem;"></div>
+    <div id="callout-sub" style="font-size:0.78rem;color:var(--text-3);margin-top:0.2rem;"></div>
+  </div>
+
+  <!-- Order Details -->
+  <div class="card" id="order-detail" style="margin-bottom:1.25rem;">
+    <div class="loading-center"><div class="spinner"></div></div>
+  </div>
+
+  <!-- Actions -->
+  <div style="display:flex;gap:0.6rem;flex-wrap:wrap;justify-content:center;" class="animate-fade-up" style="animation-delay:0.2s">
+    <a id="receipt-btn" href="/api/orders/{{ order_ref }}/receipt" class="btn btn-secondary" target="_blank" rel="noopener">
+      📄 Download Receipt
+    </a>
+    <a href="/" class="btn btn-secondary">← Back to Menu</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ORDER_REF = '{{ order_ref }}';
+const STEPS = ['placed','accepted','preparing','ready','delivered'];
+
+const STATUS_CALLOUTS = {
+  placed:    { emoji: '🕐', text: 'Order Received', sub: 'Waiting for the kitchen to accept your order…' },
+  accepted:  { emoji: '✅', text: 'Order Accepted!', sub: 'The kitchen has confirmed your order.' },
+  preparing: { emoji: '🔥', text: 'Being Prepared', sub: 'Your food is being freshly made right now!' },
+  ready:     { emoji: '🛎️', text: 'Ready for Pickup!', sub: 'Your order is ready — a waiter will bring it shortly.' },
+  delivered: { emoji: '🎉', text: 'Delivered!', sub: 'Enjoy your meal! Thank you for ordering.' },
+  cancelled: { emoji: '❌', text: 'Cancelled', sub: 'This order has been cancelled.' },
+};
+
+function setProgress(status) {
+  // Callout
+  const callout = document.getElementById('status-callout');
+  const data = STATUS_CALLOUTS[status];
+  if (data) {
+    document.getElementById('callout-emoji').textContent = data.emoji;
+    document.getElementById('callout-text').textContent = data.text;
+    document.getElementById('callout-sub').textContent = data.sub;
+    callout.style.display = 'block';
+    callout.style.animation = 'scaleIn 0.4s ease both';
+  }
+
+  if (status === 'cancelled') {
+    document.getElementById('progress-track').innerHTML =
+      '<div style="color:var(--danger);text-align:center;padding:1.5rem;font-weight:700;font-size:1.1rem;">✖ Order Cancelled</div>';
+    callout.style.borderColor = 'rgba(239,68,68,0.2)';
+    return;
+  }
+
+  const idx = STEPS.indexOf(status);
+  const pct = idx < 0 ? 0 : Math.round((idx / (STEPS.length - 1)) * 100);
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  STEPS.forEach((s, i) => {
+    const dot = document.getElementById(`dot-${s}`);
+    const lbl = document.getElementById(`lbl-${s}`);
+    if (!dot || !lbl) return;
+    if (i < idx)       { dot.className = 'step-dot done';   lbl.className = 'step-label done'; }
+    else if (i === idx){ dot.className = 'step-dot active'; lbl.className = 'step-label active'; }
+    else               { dot.className = 'step-dot';        lbl.className = 'step-label'; }
+  });
+}
+
+function renderDetail(order) {
+  const el = document.getElementById('order-detail');
+  el.style.animation = 'fadeUp 0.35s ease both';
+  el.innerHTML = `
+    <div style="display:flex;gap:1.25rem;margin-bottom:1rem;flex-wrap:wrap;">
+      <div style="flex:1;min-width:120px;">
+        <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:0.25rem;">Customer</div>
+        <div style="font-weight:700;font-size:0.95rem;">${order.customer_name}</div>
+        ${order.table_number ? `<div style="font-size:0.78rem;color:var(--text-3);margin-top:0.15rem;">Table ${order.table_number}</div>` : '<div style="font-size:0.78rem;color:var(--text-3);margin-top:0.15rem;">Takeaway</div>'}
+      </div>
+      <div>
+        <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-3);margin-bottom:0.25rem;">Status</div>
+        ${statusBadge(order.status)}
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--glass-border);padding-top:1rem;">
+      ${order.items.map(i => `
+        <div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.875rem;border-bottom:1px solid rgba(255,255,255,0.03);">
+          <span style="color:var(--text-2)">${i.item_name} <span style="color:var(--text-3);font-weight:600;">×${i.quantity}</span></span>
+          <span style="font-weight:700;color:var(--text-1);">$${i.subtotal.toFixed(2)}</span>
+        </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding-top:0.85rem;margin-top:0.25rem;border-top:1px solid var(--glass-border);font-weight:800;font-size:1.1rem;">
+        <span>Total</span><span style="color:var(--amber);font-family:'Outfit',sans-serif;">$${order.total.toFixed(2)}</span>
+      </div>
+    </div>
+    ${order.notes ? `<div style="margin-top:0.85rem;padding:0.65rem 0.85rem;background:rgba(255,255,255,0.025);border:1px solid var(--glass-border);border-radius:var(--radius-sm);font-size:0.8rem;color:var(--text-2);">📝 ${order.notes}</div>` : ''}
+    <div style="margin-top:0.75rem;font-size:0.72rem;color:var(--text-3);">Placed at ${new Date(order.placed_at).toLocaleString()}</div>`;
+}
+
+async function loadOrder() {
+  try {
+    const res = await fetch(`/api/orders/${ORDER_REF}`);
+    if (!res.ok) {
+      document.getElementById('order-detail').innerHTML =
+        '<div class="empty-state"><div class="empty-state-icon">❓</div><div class="empty-state-text">Order not found.</div></div>';
+      return;
+    }
+    const order = await res.json();
+    setProgress(order.status);
+    renderDetail(order);
+  } catch {
+    document.getElementById('order-detail').innerHTML =
+      '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Network error.</div></div>';
+  }
+}
+
+// Real-time updates via Socket.IO
+const socket = getSocket();
+socket.emit('join_order', { order_ref: ORDER_REF });
+socket.on('order_status_update', (order) => {
+  if (order.order_ref === ORDER_REF) {
+    setProgress(order.status);
+    renderDetail(order);
+    const callout = STATUS_CALLOUTS[order.status];
+    showToast(callout ? callout.text : `Status: ${order.status}`, 'info');
+  }
+});
+
+document.addEventListener('DOMContentLoaded', loadOrder);
+</script>
+{% endblock %}

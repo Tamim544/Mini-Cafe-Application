@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Staff Management — Mini Cafe Admin{% endblock %}
+
+{% block content %}
+<div class="animate-fade-up">
+  <div class="section-header">
+    <div>
+      <h1 class="section-title" style="font-size:1.4rem;">👥 Staff Management</h1>
+      <p style="font-size:0.82rem;color:var(--text-3);margin-top:0.15rem;">Manage staff accounts and role-based access.</p>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openModal('staff-modal')">+ Add Staff</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stat-grid stagger" style="grid-template-columns:repeat(3,1fr);max-width:640px;margin-bottom:1.5rem;">
+    <div class="stat-card">
+      <div class="stat-icon">👥</div>
+      <div class="stat-label">Total Staff</div>
+      <div class="stat-value" id="staff-total">—</div>
+    </div>
+    <div class="stat-card teal-accent">
+      <div class="stat-icon">✅</div>
+      <div class="stat-label">Active</div>
+      <div class="stat-value teal" id="staff-active">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">⏸️</div>
+      <div class="stat-label">Inactive</div>
+      <div class="stat-value" id="staff-inactive" style="color:var(--text-3);">—</div>
+    </div>
+  </div>
+
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="staff-table">
+        <tr><td colspan="5" style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto;"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Staff Modal -->
+<div class="modal-overlay" id="staff-modal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <span class="modal-title">Add Staff Account</span>
+      <button class="modal-close" onclick="closeModal('staff-modal')">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+      <div class="form-group">
+        <label class="form-label">Username *</label>
+        <input class="form-input" id="staff-username" placeholder="e.g. chef_anna" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password *</label>
+        <input class="form-input" type="password" id="staff-password" placeholder="Minimum 6 characters" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role *</label>
+        <select class="form-select" id="staff-role">
+          <option value="kitchen">👨‍🍳 Kitchen Staff</option>
+          <option value="waiter">🛎️ Waiter</option>
+        </select>
+      </div>
+      <div style="padding:0.65rem 0.85rem;background:rgba(255,255,255,0.025);border:1px solid var(--glass-border);border-radius:var(--radius-sm);font-size:0.75rem;color:var(--text-3);">
+        💡 <strong>Kitchen</strong> staff can accept/prepare orders. <strong>Waiters</strong> can mark orders as delivered.
+      </div>
+      <button class="btn btn-primary btn-full" onclick="addStaff()">Create Account</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireRole('admin');
+
+async function loadStaff() {
+  const res = await api('/api/admin/staff');
+  if (!res.ok) return;
+  const staff = await res.json();
+
+  // Stats
+  document.getElementById('staff-total').textContent    = staff.length;
+  document.getElementById('staff-active').textContent   = staff.filter(u => u.is_active).length;
+  document.getElementById('staff-inactive').textContent = staff.filter(u => !u.is_active).length;
+
+  const tbody = document.getElementById('staff-table');
+  if (!staff.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:2.5rem;">No staff accounts yet. Create one above!</td></tr>';
+    return;
+  }
+  const roleConfig = {
+    admin:   { color: 'var(--amber)',  icon: '👑', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    kitchen: { color: 'var(--teal)',   icon: '👨‍🍳', bg: 'rgba(20,184,166,0.1)',  border: 'rgba(20,184,166,0.2)' },
+    waiter:  { color: 'var(--info)',   icon: '🛎️', bg: 'rgba(96,165,250,0.1)', border: 'rgba(96,165,250,0.2)' },
+  };
+  tbody.innerHTML = staff.map(u => {
+    const rc = roleConfig[u.role] || roleConfig.waiter;
+    return `
+    <tr>
+      <td style="font-weight:700;color:var(--text-1);">
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <div style="width:30px;height:30px;border-radius:50%;background:${rc.bg};border:1px solid ${rc.border};display:flex;align-items:center;justify-content:center;font-size:0.85rem;">${rc.icon}</div>
+          @${u.username}
+        </div>
+      </td>
+      <td>
+        <span style="padding:0.22rem 0.65rem;border-radius:99px;background:${rc.bg};border:1px solid ${rc.border};color:${rc.color};font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">${u.role}</span>
+      </td>
+      <td>
+        <span class="status-badge ${u.is_active ? 'status-delivered' : 'status-cancelled'}">
+          ${u.is_active ? '● Active' : '● Inactive'}
+        </span>
+      </td>
+      <td style="font-size:0.78rem;color:var(--text-3);">${new Date(u.created_at).toLocaleDateString()}</td>
+      <td>
+        <div style="display:flex;gap:0.35rem;">
+          ${u.role !== 'admin' ? `
+            <button class="btn btn-secondary btn-sm" onclick="toggleStaff(${u.id})">${u.is_active ? 'Deactivate' : 'Activate'}</button>
+            <button class="btn btn-danger btn-sm" onclick="removeStaff(${u.id},'${u.username.replace(/'/g,"\\'")}')">Remove</button>
+          ` : '<span style="font-size:0.75rem;color:var(--text-3);padding:0.38rem;">Protected</span>'}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function addStaff() {
+  const username = document.getElementById('staff-username').value.trim();
+  const password = document.getElementById('staff-password').value;
+  const role     = document.getElementById('staff-role').value;
+  if (!username || !password) { showToast('All fields are required','error'); return; }
+  if (password.length < 6)   { showToast('Password must be at least 6 characters','error'); return; }
+
+  const res = await api('/api/admin/staff', { method:'POST', body:JSON.stringify({username,password,role}) });
+  if (res.ok) {
+    showToast(`Staff @${username} created! 🎉`, 'success');
+    closeModal('staff-modal');
+    document.getElementById('staff-username').value = '';
+    document.getElementById('staff-password').value = '';
+    loadStaff();
+  } else { const d=await res.json(); showToast(d.error||'Failed','error'); }
+}
+window.addStaff = addStaff;
+
+async function toggleStaff(id) {
+  const res = await api(`/api/admin/staff/${id}/toggle`, { method:'PATCH' });
+  if (res.ok) { showToast('Status updated','success'); loadStaff(); }
+  else showToast('Failed','error');
+}
+window.toggleStaff = toggleStaff;
+
+async function removeStaff(id, username) {
+  if (!confirm(`Remove @${username}? This cannot be undone.`)) return;
+  const res = await api(`/api/admin/staff/${id}`, { method:'DELETE' });
+  if (res.ok) { showToast(`@${username} removed`, 'success'); loadStaff(); }
+  else { const d=await res.json(); showToast(d.error||'Failed','error'); }
+}
+window.removeStaff = removeStaff;
+
+document.addEventListener('DOMContentLoaded', loadStaff);
+</script>
+{% endblock %}

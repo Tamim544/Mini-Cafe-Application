@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — Mini Cafe</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>" />
+  <style>
+    body {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; overflow: hidden;
+    }
+    body::before { display: none; } /* override — canvas handles bg */
+
+    /* ── Canvas background ── */
+    #bg-canvas {
+      position: fixed; inset: 0; z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ── Left-side branding panel ── */
+    .login-layout {
+      position: relative; z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      max-width: 900px;
+      width: 100%;
+      margin: 1rem;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--glass-border);
+      overflow: hidden;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.65), 0 0 120px rgba(245,158,11,0.06);
+      animation: scaleIn 0.6s var(--t-slow) both;
+    }
+
+    /* Left panel */
+    .brand-panel {
+      background: linear-gradient(145deg, rgba(245,158,11,0.12), rgba(20,184,166,0.06));
+      border-right: 1px solid var(--glass-border);
+      padding: 3rem 2.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      position: relative;
+      overflow: hidden;
+    }
+    .brand-panel::before {
+      content: '';
+      position: absolute;
+      bottom: -40%;
+      left: -40%;
+      width: 80%;
+      height: 80%;
+      background: radial-gradient(circle, rgba(245,158,11,0.15), transparent 65%);
+      pointer-events: none;
+    }
+    .brand-logo { font-size: 4rem; line-height: 1; filter: drop-shadow(0 8px 20px rgba(245,158,11,0.3)); animation: float 4s ease-in-out infinite; }
+    @keyframes float {
+      0%,100% { transform: translateY(0); }
+      50%      { transform: translateY(-8px); }
+    }
+    .brand-name { font-family: 'Outfit', sans-serif; font-size: 2rem; font-weight: 900; color: var(--text-1); margin-top: 1rem; letter-spacing: -0.04em; }
+    .brand-tagline { color: var(--text-2); font-size: 0.875rem; margin-top: 0.4rem; line-height: 1.5; }
+    .brand-features { display: flex; flex-direction: column; gap: 0.75rem; margin-top: auto; padding-top: 2rem; }
+    .brand-feat {
+      display: flex; align-items: center; gap: 0.65rem;
+      font-size: 0.82rem; color: var(--text-2); font-weight: 500;
+    }
+    .feat-dot { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0; }
+    .feat-dot.amber { background: rgba(245,158,11,0.15); }
+    .feat-dot.teal  { background: rgba(20,184,166,0.15); }
+    .feat-dot.purple{ background: rgba(167,139,250,0.15);}
+
+    /* Right panel — the form */
+    .form-panel {
+      background: rgba(8,8,16,0.92);
+      padding: 2.75rem 2.5rem;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1.5rem;
+    }
+    .form-panel-header h2 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; }
+    .form-panel-header p  { font-size: 0.84rem; color: var(--text-3); margin-top: 0.25rem; }
+
+    .login-form { display: flex; flex-direction: column; gap: 1rem; }
+
+    .error-msg { font-size: 0.82rem; color: var(--danger); min-height: 1rem; display: flex; align-items: center; gap: 0.4rem; }
+
+    .login-info {
+      padding: 0.75rem 1rem;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      font-size: 0.78rem;
+      color: var(--text-3);
+      line-height: 1.5;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    .login-info-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+
+    /* Back to menu link */
+    .back-link {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-3);
+    }
+    .back-link a { color: var(--amber); text-decoration: none; font-weight: 600; transition: opacity var(--t-fast); }
+    .back-link a:hover { opacity: 0.75; }
+
+    /* Spin animation on submit */
+    @keyframes btnSpin {
+      to { transform: rotate(360deg); }
+    }
+    .btn-spinning { pointer-events: none; }
+    .btn-spinning::before { content: ''; display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,0,0,0.3); border-top-color: #000; border-radius: 50%; animation: btnSpin 0.6s linear infinite; margin-right: 6px; }
+
+    /* Responsive */
+    @media (max-width: 680px) {
+      .login-layout { grid-template-columns: 1fr; }
+      .brand-panel { display: none; }
+      .form-panel { padding: 2rem 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="toast-container" id="toast-container"></div>
+<canvas id="bg-canvas"></canvas>
+
+<div class="login-layout">
+  <!-- Left branding -->
+  <div class="brand-panel">
+    <div>
+      <div class="brand-logo">☕</div>
+      <div class="brand-name">Mini Cafe</div>
+      <div class="brand-tagline">A modern cafe management system with real-time order tracking.</div>
+    </div>
+    <div class="brand-features">
+      <div class="brand-feat">
+        <div class="feat-dot amber">🔥</div>
+        <span>Real-time kitchen & waiter dashboards</span>
+      </div>
+      <div class="brand-feat">
+        <div class="feat-dot teal">📱</div>
+        <span>QR code order tracking for customers</span>
+      </div>
+      <div class="brand-feat">
+        <div class="feat-dot purple">📊</div>
+        <span>Admin analytics with live charts</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right form -->
+  <div class="form-panel">
+    <div class="form-panel-header">
+      <h2>Staff Login</h2>
+      <p>Customers don't need an account — just order directly.</p>
+    </div>
+
+    <form class="login-form" id="login-form" onsubmit="doLogin(event)" autocomplete="on">
+      <div class="form-group">
+        <label class="form-label" for="username">Username</label>
+        <input class="form-input" type="text" id="username" name="username" autocomplete="username" placeholder="Enter username" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input class="form-input" type="password" id="password" name="password" autocomplete="current-password" placeholder="••••••••" required />
+      </div>
+      <div class="error-msg" id="login-error" aria-live="polite"></div>
+      <button class="btn btn-primary btn-full btn-lg" type="submit" id="login-btn">
+        Sign In →
+      </button>
+    </form>
+
+    <div class="login-info">
+      <span class="login-info-icon">🔒</span>
+      <span>Staff accounts are managed by the admin. Contact your manager if you need access.</span>
+    </div>
+
+    <div class="back-link">
+      Not staff? <a href="/">Browse the menu →</a>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+  // Redirect if already logged in
+  if (Auth.isLoggedIn()) {
+    const dest = { admin: '/admin', kitchen: '/kitchen', waiter: '/waiter' }[Auth.role()] || '/';
+    window.location.href = dest;
+  }
+
+  // ── Particle canvas background ──────────────────────────────
+  const canvas = document.getElementById('bg-canvas');
+  const ctx    = canvas.getContext('2d');
+  let W, H, particles = [];
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function Particle() {
+    this.reset = function() {
+      this.x  = Math.random() * W;
+      this.y  = Math.random() * H;
+      this.r  = Math.random() * 1.5 + 0.3;
+      this.vx = (Math.random() - 0.5) * 0.3;
+      this.vy = (Math.random() - 0.5) * 0.3;
+      this.a  = Math.random() * 0.4 + 0.1;
+      this.color = Math.random() > 0.6 ? '245,158,11' : '20,184,166';
+    };
+    this.reset();
+    this.y = Math.random() * H; // start scattered
+  }
+
+  function initParticles() {
+    particles = Array.from({ length: 80 }, () => new Particle());
+  }
+
+  function drawFrame() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Deep background
+    ctx.fillStyle = '#06060e';
+    ctx.fillRect(0, 0, W, H);
+
+    // Ambient glow blobs
+    const g1 = ctx.createRadialGradient(W*0.15, H*0.1, 0, W*0.15, H*0.1, W*0.45);
+    g1.addColorStop(0, 'rgba(245,158,11,0.07)');
+    g1.addColorStop(1, 'rgba(245,158,11,0)');
+    ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H);
+
+    const g2 = ctx.createRadialGradient(W*0.85, H*0.85, 0, W*0.85, H*0.85, W*0.4);
+    g2.addColorStop(0, 'rgba(20,184,166,0.06)');
+    g2.addColorStop(1, 'rgba(20,184,166,0)');
+    ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
+
+    // Grid lines (subtle)
+    ctx.strokeStyle = 'rgba(255,255,255,0.018)';
+    ctx.lineWidth = 1;
+    const gSize = 60;
+    for (let x = 0; x < W; x += gSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += gSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+    // Particles
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > W || p.y < 0 || p.y > H) p.reset();
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color},${p.a})`;
+      ctx.fill();
+    });
+
+    // Connection lines
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 90) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(245,158,11,${0.06 * (1 - dist/90)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+
+    requestAnimationFrame(drawFrame);
+  }
+
+  resize(); initParticles(); drawFrame();
+  window.addEventListener('resize', () => { resize(); initParticles(); });
+
+
+
+  // ── Login ──────────────────────────────────────────────────
+  async function doLogin(e) {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const err = document.getElementById('login-error');
+    btn.classList.add('btn-spinning');
+    btn.textContent = '';
+    err.textContent = '';
+
+    try {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value.trim(),
+          password: document.getElementById('password').value,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        Auth.save(data);
+        btn.textContent = '✓ Redirecting…';
+        btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+        const dest = { admin: '/admin', kitchen: '/kitchen', waiter: '/waiter' }[data.user.role] || '/';
+        setTimeout(() => window.location.href = dest, 350);
+      } else {
+        err.innerHTML = '⚠ ' + (data.error || 'Invalid credentials.');
+        btn.classList.remove('btn-spinning');
+        btn.textContent = 'Sign In →';
+        // Shake animation
+        document.querySelector('.form-panel').style.animation = 'shake 0.4s ease';
+        setTimeout(() => document.querySelector('.form-panel').style.animation = '', 400);
+      }
+    } catch {
+      err.innerHTML = '⚠ Network error. Please try again.';
+      btn.classList.remove('btn-spinning');
+      btn.textContent = 'Sign In →';
+    }
+  }
+</script>
+<style>
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20%      { transform: translateX(-6px); }
+    40%      { transform: translateX(6px); }
+    60%      { transform: translateX(-4px); }
+    80%      { transform: translateX(4px); }
+  }
+</style>
+</body>
+</html>

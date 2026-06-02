@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Mini Cafe Admin{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="animate-fade-up">
+  <!-- Header -->
+  <div class="section-header" style="margin-bottom:1.75rem;">
+    <div>
+      <div style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.25rem 0.75rem;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.2);border-radius:99px;font-size:0.68rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:0.75rem;">
+        📊 Analytics
+      </div>
+      <h1>
+        Dashboard <span class="gradient-text">Overview</span>
+      </h1>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center;">
+      <span class="live-chip"><span class="live-dot"></span> Live</span>
+      <button class="btn btn-secondary btn-sm" onclick="loadAnalytics()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="stat-grid stagger" id="stat-grid">
+    <div class="stat-card">
+      <div class="stat-icon">💰</div>
+      <div class="stat-label">Total Revenue</div>
+      <div class="stat-value amber" id="s-total-rev">—</div>
+      <div class="stat-sub">All time</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">📈</div>
+      <div class="stat-label">Today Revenue</div>
+      <div class="stat-value amber" id="s-today-rev">—</div>
+      <div class="stat-sub">Since midnight</div>
+    </div>
+    <div class="stat-card teal-accent">
+      <div class="stat-icon">📦</div>
+      <div class="stat-label">Total Orders</div>
+      <div class="stat-value teal" id="s-total-ord">—</div>
+      <div class="stat-sub">All time</div>
+    </div>
+    <div class="stat-card teal-accent">
+      <div class="stat-icon">🔥</div>
+      <div class="stat-label">Today Orders</div>
+      <div class="stat-value teal" id="s-today-ord">—</div>
+      <div class="stat-sub">Since midnight</div>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="chart-grid">
+    <div class="chart-card" style="animation-delay:0.15s">
+      <div class="chart-label">Order Status Breakdown</div>
+      <div style="position: relative; height: 220px; width: 100%;">
+        <canvas id="chart-status"></canvas>
+      </div>
+    </div>
+    <div class="chart-card" style="animation-delay:0.2s">
+      <div class="chart-label">Top Selling Items</div>
+      <div style="position: relative; height: 220px; width: 100%;">
+        <canvas id="chart-items"></canvas>
+      </div>
+    </div>
+    <div class="chart-card" style="animation-delay:0.25s">
+      <div class="chart-label">Weekly Revenue Trend</div>
+      <div style="position: relative; height: 220px; width: 100%;">
+        <canvas id="chart-weekly"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent orders -->
+  <div class="section-header" style="margin-top:0.5rem;">
+    <h2 class="section-title" style="font-size:1rem;">📋 Recent Orders</h2>
+    <a href="/admin/orders" class="btn btn-secondary btn-sm">View All →</a>
+  </div>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>Ref</th><th>Customer</th><th>Table</th><th>Status</th><th>Total</th><th>Time</th></tr></thead>
+      <tbody id="recent-orders">
+        <tr><td colspan="6" style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto;"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireRole('admin');
+
+let statusChart, itemsChart, weeklyChart;
+
+// Chart.js global defaults for dark theme
+Chart.defaults.color = '#475569';
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.plugins.legend.labels.boxWidth = 12;
+Chart.defaults.plugins.legend.labels.padding = 14;
+
+const CHART_COLORS = {
+  amber:  { bg: 'rgba(245,158,11,0.75)',  border: '#f59e0b' },
+  teal:   { bg: 'rgba(20,184,166,0.75)',   border: '#14b8a6' },
+  blue:   { bg: 'rgba(96,165,250,0.75)',   border: '#60a5fa' },
+  green:  { bg: 'rgba(34,197,94,0.75)',    border: '#22c55e' },
+  red:    { bg: 'rgba(239,68,68,0.75)',    border: '#ef4444' },
+  purple: { bg: 'rgba(167,139,250,0.75)',  border: '#a78bfa' },
+  gray:   { bg: 'rgba(100,116,139,0.75)',  border: '#64748b' },
+};
+const PALETTE_BG     = Object.values(CHART_COLORS).map(c => c.bg);
+const PALETTE_BORDER = Object.values(CHART_COLORS).map(c => c.border);
+
+function makeChart(id, type, labels, data, opts = {}) {
+  const ctx = document.getElementById(id).getContext('2d');
+  const cfg = {
+    type,
+    data: {
+      labels,
+      datasets: [{
+        label: opts.label || '',
+        data,
+        backgroundColor: type === 'line' ? 'rgba(245,158,11,0.08)' : PALETTE_BG,
+        borderColor: type === 'line' ? '#f59e0b' : PALETTE_BORDER,
+        borderWidth: type === 'line' ? 2.5 : 0,
+        fill: type === 'line',
+        tension: 0.45,
+        pointBackgroundColor: type === 'line' ? '#f59e0b' : undefined,
+        pointRadius: type === 'line' ? 3 : undefined,
+        pointHoverRadius: type === 'line' ? 6 : undefined,
+        borderRadius: type === 'bar' ? 6 : undefined,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: type === 'doughnut',
+          position: 'bottom',
+          labels: { color: '#94a3b8', usePointStyle: true, pointStyle: 'circle' }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(13,13,26,0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#94a3b8',
+          borderColor: 'rgba(255,255,255,0.08)',
+          borderWidth: 1,
+          cornerRadius: 10,
+          padding: 10,
+          callbacks: {
+            label: (ctx) => opts.prefix ? `${opts.prefix}${ctx.parsed.y?.toFixed(2) ?? ctx.parsed}` : ctx.formattedValue
+          }
+        }
+      },
+      scales: type !== 'doughnut' ? {
+        x: {
+          ticks: { color: '#3f4f63', font: { size: 10, weight: 600 } },
+          grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+          border: { display: false }
+        },
+        y: {
+          ticks: { color: '#3f4f63', font: { size: 10 }, callback: v => opts.prefix ? `${opts.prefix}${v}` : v },
+          grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
+          border: { display: false },
+          beginAtZero: true
+        }
+      } : {},
+      ...(type === 'doughnut' ? { cutout: '65%' } : {}),
+    }
+  };
+  return new Chart(ctx, cfg);
+}
+
+// Animated counter
+function animateValue(el, end, prefix = '', duration = 600) {
+  const start = 0;
+  const startTime = performance.now();
+  function update(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+    const current = Math.round(start + (end - start) * eased);
+    el.textContent = prefix + current.toLocaleString();
+    if (progress < 1) requestAnimationFrame(update);
+    else el.textContent = prefix + (typeof end === 'number' && !Number.isInteger(end) ? end.toFixed(2) : end.toLocaleString());
+  }
+  requestAnimationFrame(update);
+}
+
+async function loadAnalytics() {
+  try {
+    const res = await api('/api/admin/analytics');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    // Animate stat values
+    animateValue(document.getElementById('s-total-rev'), d.total_revenue, '$');
+    animateValue(document.getElementById('s-today-rev'), d.today_revenue, '$');
+    animateValue(document.getElementById('s-total-ord'), d.total_orders);
+    animateValue(document.getElementById('s-today-ord'), d.today_orders);
+
+    // Status doughnut
+    const sb = d.status_breakdown;
+    const sLabels = Object.keys(sb);
+    const sData   = Object.values(sb);
+    if (statusChart) statusChart.destroy();
+    statusChart = makeChart('chart-status', 'doughnut', sLabels, sData, { label: 'Orders' });
+
+    // Top items bar
+    if (itemsChart) itemsChart.destroy();
+    itemsChart = makeChart('chart-items', 'bar', d.top_items.map(i=>i.name), d.top_items.map(i=>i.quantity), { label: 'Qty Sold' });
+
+    // Weekly line
+    if (weeklyChart) weeklyChart.destroy();
+    weeklyChart = makeChart('chart-weekly', 'line', d.weekly_revenue.map(r=>r.date), d.weekly_revenue.map(r=>r.revenue), { label: 'Revenue', prefix: '$' });
+
+    // Recent orders table
+    const ordRes = await api('/api/orders?status=');
+    const orders = ordRes.ok ? await ordRes.json() : [];
+    const tbody = document.getElementById('recent-orders');
+    tbody.innerHTML = orders.slice(0,8).map(o => `
+      <tr>
+        <td><a href="/track/${o.order_ref}" target="_blank" style="color:var(--amber);font-weight:800;text-decoration:none;font-family:'Outfit',sans-serif;letter-spacing:0.02em;">${o.order_ref}</a></td>
+        <td style="color:var(--text-1);font-weight:600;">${o.customer_name}</td>
+        <td>${o.table_number || '—'}</td>
+        <td>${statusBadge(o.status)}</td>
+        <td style="font-weight:800;color:var(--amber);font-family:'Outfit',sans-serif;">$${o.total.toFixed(2)}</td>
+        <td style="color:var(--text-3);font-size:0.78rem;">${timeAgo(o.placed_at)}</td>
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:2rem;">No orders yet</td></tr>';
+  } catch(e) {
+    console.error(e);
+    showToast('Failed to load analytics', 'error');
+  }
+}
+
+// Live update
+const socket = getSocket();
+socket.on('new_order', () => loadAnalytics());
+
+document.addEventListener('DOMContentLoaded', loadAnalytics);
+</script>
+{% endblock %}

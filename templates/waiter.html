@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Waiter — Mini Cafe{% endblock %}
+
+{% block content %}
+<div class="animate-fade-up">
+  <div class="section-header">
+    <div>
+      <h1 class="section-title" style="font-size:1.4rem;">🛎️ Waiter Dashboard</h1>
+      <p style="font-size:0.82rem;color:var(--text-3);margin-top:0.15rem;">Orders ready for delivery — mark them as delivered.</p>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center;">
+      <span class="live-chip"><span class="live-dot"></span> Live</span>
+      <button class="btn btn-secondary btn-sm" onclick="loadOrders()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stat-grid stagger" style="grid-template-columns:repeat(2,1fr);max-width:420px;margin-bottom:1.5rem;">
+    <div class="stat-card teal-accent">
+      <div class="stat-icon">🛎️</div>
+      <div class="stat-label">Ready for Delivery</div>
+      <div class="stat-value teal" id="w-stat-ready">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">✅</div>
+      <div class="stat-label">Delivered Today</div>
+      <div class="stat-value success" id="w-stat-delivered">—</div>
+    </div>
+  </div>
+
+  <div class="order-cards-grid" id="orders-grid">
+    <div class="skeleton skeleton-card" style="grid-column:1/-1"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/waiter.js"></script>
+{% endblock %}

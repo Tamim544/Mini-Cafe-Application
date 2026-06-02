@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Menu Management — Mini Cafe Admin{% endblock %}
+
+{% block content %}
+<div class="animate-fade-up">
+  <div class="section-header">
+    <div>
+      <h1 class="section-title" style="font-size:1.4rem;">🗂️ Menu Management</h1>
+      <p style="font-size:0.82rem;color:var(--text-3);margin-top:0.15rem;">Add, edit, and toggle menu items and categories.</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;">
+      <button class="btn btn-secondary btn-sm" onclick="openModal('cat-modal')">+ Category</button>
+      <button class="btn btn-primary btn-sm" onclick="openItemModal()">+ Add Item</button>
+    </div>
+  </div>
+
+  <div id="menu-container">
+    <div class="skeleton skeleton-card" style="height:120px;margin-bottom:1rem;"></div>
+    <div class="skeleton skeleton-card" style="height:120px;margin-bottom:1rem;"></div>
+  </div>
+</div>
+
+<!-- Item Modal -->
+<div class="modal-overlay" id="item-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="item-modal-title">Add Menu Item</span>
+      <button class="modal-close" onclick="closeModal('item-modal')">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+      <input type="hidden" id="edit-item-id" />
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.85rem;">
+        <div class="form-group">
+          <label class="form-label">Item Name *</label>
+          <input class="form-input" id="item-name" placeholder="e.g. Cappuccino" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Price ($) *</label>
+          <input class="form-input" type="number" id="item-price" placeholder="3.50" step="0.01" min="0" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <select class="form-select" id="item-category"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea class="form-textarea" id="item-desc" placeholder="A short description shown to customers…"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Image (optional)</label>
+        <input class="form-input" type="file" id="item-image" accept="image/*" />
+      </div>
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <label class="toggle"><input type="checkbox" id="item-available" checked /><span class="toggle-slider"></span></label>
+        <span style="font-size:0.855rem;color:var(--text-2);font-weight:500;">Available for ordering</span>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="saveItem()">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- Category modal -->
+<div class="modal-overlay" id="cat-modal">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-header">
+      <span class="modal-title">Add Category</span>
+      <button class="modal-close" onclick="closeModal('cat-modal')">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+      <div class="form-group">
+        <label class="form-label">Category Name</label>
+        <input class="form-input" id="cat-name" placeholder="e.g. Cold Drinks" />
+      </div>
+      <button class="btn btn-primary btn-full" onclick="saveCategory()">Add Category</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireRole('admin');
+
+let categories = [];
+
+async function loadMenu() {
+  const [mRes, cRes] = await Promise.all([api('/api/menu/all'), api('/api/categories')]);
+  categories = cRes.ok ? await cRes.json() : [];
+  const menu = mRes.ok ? await mRes.json() : [];
+  renderMenu(menu);
+}
+
+function renderMenu(menu) {
+  const container = document.getElementById('menu-container');
+  if (!menu.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🍽️</div><div class="empty-state-text">No items yet. Add your first menu item!</div></div>`;
+    return;
+  }
+  container.innerHTML = menu.map((cat, ci) => `
+    <div style="margin-bottom:1.75rem;animation:fadeUp 0.4s ease ${ci*0.08}s both;">
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.85rem;">
+        <h3 style="font-size:1rem;font-weight:700;">${cat.category}</h3>
+        <span style="flex:1;height:1px;background:var(--glass-border);"></span>
+        <span style="font-size:0.72rem;color:var(--text-3);font-weight:600;">${cat.items.length} items</span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Item</th><th>Price</th><th>Description</th><th>Available</th><th>Actions</th></tr></thead>
+          <tbody>
+            ${cat.items.map(item => `
+              <tr>
+                <td style="font-weight:700;color:var(--text-1);">${item.name}</td>
+                <td style="font-weight:800;color:var(--amber);font-family:'Outfit',sans-serif;">$${item.price.toFixed(2)}</td>
+                <td style="font-size:0.78rem;color:var(--text-3);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.description||'<span style="color:var(--text-3);opacity:0.5;">—</span>'}</td>
+                <td>
+                  <label class="toggle">
+                    <input type="checkbox" ${item.available?'checked':''} onchange="toggleItem(${item.id})" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </td>
+                <td>
+                  <div style="display:flex;gap:0.35rem;">
+                    <button class="btn btn-secondary btn-sm" onclick='editItem(${JSON.stringify(item).replace(/'/g,"&#39;")})'>Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteItem(${item.id},'${item.name.replace(/'/g,"\\'")}')">Delete</button>
+                  </div>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`).join('');
+}
+
+function openItemModal(item) {
+  document.getElementById('item-modal-title').textContent = item ? 'Edit Item' : 'Add Menu Item';
+  document.getElementById('edit-item-id').value = item?.id || '';
+  document.getElementById('item-name').value = item?.name || '';
+  document.getElementById('item-price').value = item?.price || '';
+  document.getElementById('item-desc').value = item?.description || '';
+  document.getElementById('item-available').checked = item?.available ?? true;
+  const sel = document.getElementById('item-category');
+  sel.innerHTML = categories.map(c => `<option value="${c.id}" ${item?.category_id===c.id?'selected':''}>${c.name}</option>`).join('');
+  openModal('item-modal');
+}
+function editItem(item) { openItemModal(item); }
+window.openItemModal = openItemModal;
+window.editItem = editItem;
+
+async function saveItem() {
+  const id = document.getElementById('edit-item-id').value;
+  const name = document.getElementById('item-name').value.trim();
+  const price = parseFloat(document.getElementById('item-price').value);
+  const desc = document.getElementById('item-desc').value.trim();
+  const cat_id = document.getElementById('item-category').value;
+  const available = document.getElementById('item-available').checked;
+  const imageFile = document.getElementById('item-image').files[0];
+
+  if (!name || isNaN(price)) { showToast('Name and price are required', 'error'); return; }
+
+  const formData = new FormData();
+  formData.append('name', name);
+  formData.append('price', price);
+  formData.append('description', desc);
+  formData.append('category_id', cat_id);
+  formData.append('available', available);
+  if (imageFile) {
+      formData.append('image', imageFile);
+  }
+
+  try {
+    const token = Auth.token();
+    const res = await fetch(id ? `/api/menu/${id}` : '/api/menu', {
+      method: id ? 'PUT' : 'POST',
+      headers: {
+          'Authorization': `Bearer ${token}`
+          // Do NOT set Content-Type header when sending FormData, browser will set it with boundary
+      },
+      body: formData
+    });
+    if (res.ok) { showToast(id ? 'Item updated!' : 'Item added!', 'success'); closeModal('item-modal'); loadMenu(); }
+    else { const d=await res.json(); showToast(d.error||'Failed','error'); }
+  } catch (err) {
+    showToast('Failed to save item', 'error');
+  }
+}
+window.saveItem = saveItem;
+
+async function toggleItem(id) {
+  const res = await api(`/api/menu/${id}/toggle`, { method:'PATCH' });
+  if (res.ok) showToast('Availability updated','success');
+  else showToast('Failed','error');
+}
+window.toggleItem = toggleItem;
+
+async function deleteItem(id, name) {
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  const res = await api(`/api/menu/${id}`, { method:'DELETE' });
+  if (res.ok) { showToast(`"${name}" deleted`, 'success'); loadMenu(); }
+  else { const d=await res.json(); showToast(d.error||'Failed','error'); }
+}
+window.deleteItem = deleteItem;
+
+async function saveCategory() {
+  const name = document.getElementById('cat-name').value.trim();
+  if (!name) { showToast('Category name required','error'); return; }
+  const res = await api('/api/categories', { method:'POST', body:JSON.stringify({name}) });
+  if (res.ok) { showToast(`Category "${name}" added!`, 'success'); closeModal('cat-modal'); document.getElementById('cat-name').value=''; loadMenu(); }
+  else { const d=await res.json(); showToast(d.error||'Failed','error'); }
+}
+window.saveCategory = saveCategory;
+
+document.addEventListener('DOMContentLoaded', loadMenu);
+</script>
+{% endblock %}
